@@ -82,9 +82,10 @@ export class AgentBrain {
     private toolRegistry: ToolRegistry,
     private auditService: AuditService,
     private sessionLane: SessionLaneQueue,
-    private llmComplete: (options: CompletionOptions) => Promise<CompletionResponse>
+    private llmComplete: (options: CompletionOptions) => Promise<CompletionResponse>,
+    policyLoader?: any
   ) {
-    this.policyEngine = new PolicyEngine(auditService);
+    this.policyEngine = new PolicyEngine(auditService, policyLoader);
 
     // Register handler to recreate tasks from payloads after server restart
     this.sessionLane.registerHandler(async (payload) => {
@@ -234,25 +235,24 @@ export class AgentBrain {
         tools: this.toolRegistry.getAnthropicSchemas() as any,
       });
 
-      let assistantResponse: any;
-      try {
-        const jsonMatch = response.content?.match(/```json\n([\s\S]*?)\n```/) || [null, response.content];
-        assistantResponse = JSON.parse(jsonMatch[1] || response.content || '{}');
-      } catch {
-        assistantResponse = { thought: 'Error parsing JSON', content: response.content };
-      }
+      // Use toolCalls directly from adapter response (not parsed from content)
+      const assistantResponse = {
+        thought: response.content || '',
+        toolCalls: response.toolCalls || [],
+      };
 
       state.messages.push({
         role: 'assistant',
-        content: JSON.stringify(assistantResponse),
+        content: response.content || '',
       });
 
       // Handle tool calls
+      console.log('[AgentBrain] assistantResponse.toolCalls:', assistantResponse.toolCalls);
       if (assistantResponse.toolCalls && assistantResponse.toolCalls.length > 0) {
         console.log('[AgentBrain] Processing', assistantResponse.toolCalls.length, 'tool calls');
         for (const toolCall of assistantResponse.toolCalls) {
           const toolName = toolCall.name;
-          const toolParams = toolCall.input || toolCall.parameters;
+          const toolParams = toolCall.input;
           const callId = toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
           console.log('[AgentBrain] Tool call:', toolName, JSON.stringify(toolParams));
           console.log('[AgentBrain] Call ID:', callId);
@@ -341,7 +341,7 @@ export class AgentBrain {
       }
 
       // Check termination tokens
-      const content = assistantResponse.content || '';
+      const content = response.content || '';
 
       if (content.includes(HEARTBEAT_OK)) {
         return {

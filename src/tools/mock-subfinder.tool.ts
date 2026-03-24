@@ -13,7 +13,7 @@ export const MockSubfinderTool: VantaTool = {
   tags: ['recon', 'subdomain', 'passive'],
   parameters: z.object({
     domain: z.string().describe('Root domain to enumerate subdomains for'),
-    passive: z.boolean().default(true).describe('Passive only — no active DNS bruteforce'),
+    passive: z.union([z.boolean(), z.string()]).transform(val => val === true || val === 'true').default(true).describe('Passive only — no active DNS bruteforce'),
   }),
   execute: async (params: any, context: EngagementContext): Promise<ToolResult> => {
     console.log(`[MockSubfinderTool] Enumerating subdomains for ${params.domain}...`);

@@ -67,16 +67,20 @@ async function runTest(): Promise<void> {
   toolRegistry.register(MockSubfinderTool);
   console.log('✅ Registered: MockNmapTool, MockSubfinderTool');
 
-  // 3. Initialize policy engine
-  const policyEngine = new PolicyEngine(auditService);
-  console.log('✅ PolicyEngine initialized');
+  // 3. Initialize policy engine with context pre-loaded
+  const { DefaultPolicyLoader } = await import('../src/policy/policy-engine');
+  const policyLoader = new DefaultPolicyLoader();
+  policyLoader.setContext(TEST_ENGAGEMENT_ID, TEST_CONTEXT);
+  const policyEngine = new PolicyEngine(auditService, policyLoader);
+  console.log('✅ PolicyEngine initialized with test context');
 
-  // 4. Initialize AgentBrain
+  // 4. Initialize AgentBrain with policy loader
   const agentBrain = new AgentBrain(
     toolRegistry,
     auditService,
     sessionLane,
-    (options: any) => ollamaAdapter.complete(options)
+    (options: any) => ollamaAdapter.complete(options),
+    policyLoader
   );
   console.log('✅ AgentBrain initialized with Ollama adapter\n');
 

@@ -159,18 +159,28 @@ export class SessionLaneQueue {
           }
 
           try {
+            console.log(`[SessionLane] Processing task from lane ${laneId}`);
+            console.log(`[SessionLane] Has entry: ${!!entry}, Has handler: ${!!this.handler}, Has payload: ${!!payload}`);
+            
             let result;
             if (entry) {
+              console.log(`[SessionLane] Executing entry.task()`);
               result = await entry.task();
             } else if (this.handler && payload) {
+              console.log(`[SessionLane] Executing handler(payload)`);
               result = await this.handler(payload);
             } else {
               console.warn(`[SessionLane] Dropped task from lane ${laneId} — no handler`);
             }
 
-            if (entry) entry.resolve(result);
+            console.log(`[SessionLane] Task result:`, result?.status, result?.toolsUsed);
+            if (entry) {
+              console.log(`[SessionLane] Resolving entry`);
+              entry.resolve(result);
+            }
           } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
+            console.error(`[SessionLane] Task error:`, err.message);
             if (entry) entry.reject(err);
           }
         } finally {
