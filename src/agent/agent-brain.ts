@@ -1,7 +1,7 @@
-import { ToolRegistry, EngagementContext, ToolResult } from './tool-registry';
+import { ToolRegistry, EngagementContext, ToolResult } from '../tools/tool-registry';
 import { SessionLaneQueue } from '../queue/session-lane.queue';
 import { AuditService, AuditLogInput } from '../audit/audit.service';
-import { PolicyEngine, PolicyDecision } from './policy-engine';
+import { PolicyEngine, PolicyDecision } from '../policy/policy-engine';
 
 // ─── Constant tokens ────────────────────────────────────────────────────────
 export const HEARTBEAT_OK = 'HEARTBEAT_OK';
@@ -53,14 +53,14 @@ export interface BrainResponse {
   nextPhase?: AttackPhase;
 }
 
-interface CompletionOptions {
+export interface CompletionOptions {
   model: string;
   messages: Array<{ role: string; content: string; tool_call_id?: string }>;
   tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: object } }>;
   temperature?: number;
 }
 
-interface CompletionResponse {
+export interface CompletionResponse {
   content: string | null;
   toolCalls?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
 }
@@ -231,7 +231,7 @@ export class AgentBrain {
         model: config?.model ?? 'claude-sonnet-4-20250514',
         messages: state.messages,
         temperature: config?.temperature ?? 0,
-        tools: this.toolRegistry.getAnthropicSchemas(),
+        tools: this.toolRegistry.getAnthropicSchemas() as any,
       });
 
       let assistantResponse: any;
@@ -249,15 +249,22 @@ export class AgentBrain {
 
       // Handle tool calls
       if (assistantResponse.toolCalls && assistantResponse.toolCalls.length > 0) {
+        console.log('[AgentBrain] Processing', assistantResponse.toolCalls.length, 'tool calls');
         for (const toolCall of assistantResponse.toolCalls) {
           const toolName = toolCall.name;
           const toolParams = toolCall.input || toolCall.parameters;
           const callId = toolCall.id || `call_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          console.log('[AgentBrain] Tool call:', toolName, JSON.stringify(toolParams));
+          console.log('[AgentBrain] Call ID:', callId);
 
           // Policy check — MUST happen BEFORE tool execution
-          const decision = await this.policyEngine.evaluate(context, toolName, this.toolRegistry.getRiskLevel(toolName));
+          const riskLevel = this.toolRegistry.getRiskLevel(toolName);
+          console.log('[AgentBrain] Tool risk level:', riskLevel);
+          const decision = await this.policyEngine.evaluate(context, toolName, riskLevel);
+          console.log('[AgentBrain] Policy decision:', decision);
 
           if (decision.action === 'deny') {
+            console.log('[AgentBrain] Tool DENIED');
             state.messages.push({
               role: 'tool',
               content: JSON.stringify({ success: false, error: `Tool denied: ${decision.reason}` }),
@@ -267,6 +274,7 @@ export class AgentBrain {
           }
 
           if (decision.action === 'gate') {
+            console.log('[AgentBrain] Tool GATED');
             // PAUSE the loop and request human approval
             return {
               response: `Approval required: ${decision.reason}`,
@@ -279,8 +287,11 @@ export class AgentBrain {
 
           // Execute tool — only after policy allows
           try {
+            console.log('[AgentBrain] Executing tool:', toolName);
             const result = await this.toolRegistry.execute(toolName, toolParams, context);
+            console.log('[AgentBrain] Tool result:', result.success, result.output ? 'has output' : 'no output');
             toolsUsed.push(toolName);
+            console.log('[AgentBrain] toolsUsed now:', toolsUsed);
 
             if (result.discoveredAssets) {
               discoveredAssets.push(...result.discoveredAssets);
@@ -403,7 +414,7 @@ export class AgentBrain {
     return `You are VANTA Core, an offensive security AI agent.
 
 Current Phase: ${context.currentPhase}
-${phaseInstructions[context.currentPhase]}
+${phaseInstructions[context.currentPhase] || 'Unknown phase'}
 
 Engagement Scope:
 - In-scope targets: ${context.scope.inScopeTargets.join(', ')}
@@ -413,7 +424,7 @@ Engagement Scope:
 - Blocked tools: ${context.scope.blockedTools.join(', ')}
 
 Rules of Engagement:
-${context.rulesOfEngagement.map(r => `- ${r.description}: ${r.constraint}`).join('\n')}
+${context.rulesOfEngagement.map((r: any) => `- ${r.description}: ${r.constraint}`).join('\n')}
 
 Always:
 1. Check scope before targeting

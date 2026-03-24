@@ -1,0 +1,22 @@
+{
+  "name": "vanta-core",
+  "version": "0.1.0",
+  "description": "Autonomous Threat Simulation Engine",
+  "private": true,
+  "scripts": {
+    "test:react": "ts-node test/react-loop.test.ts",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.24.0",
+    "ioredis": "^5.4.0",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "ts-node": "^10.9.2",
+    "@types/node": "^22.0.0"
+  }
+}
