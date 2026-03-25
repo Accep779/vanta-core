@@ -1,0 +1,30 @@
+FROM golang:1.24-alpine AS builder
+
+LABEL description="HTTPX HTTP probe tool"
+
+# Install httpx (specific version compatible with Go 1.24)
+RUN go install -v github.com/projectdiscovery/httpx/cmd/httpx@v1.7.0
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add \
+    ca-certificates \
+    bind-tools \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Create workspace
+WORKDIR /workspace
+
+# Copy httpx binary from builder
+COPY --from=builder /go/bin/httpx /usr/local/bin/httpx
+
+# Create non-root user
+RUN adduser -D -u 1000 scanner && \
+    chown -R scanner:scanner /workspace
+
+USER scanner
+
+ENTRYPOINT ["httpx"]
+CMD ["--help"]

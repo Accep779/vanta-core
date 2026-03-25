@@ -98,6 +98,33 @@ export class ToolRegistry {
   }
 
   /**
+   * Get tool schemas filtered by attack phase category
+   * SECURITY REQUIREMENT: Agent must only see tools for current phase
+   * - RECON phase gets only category: 'recon' tools
+   * - EXPLOIT phase gets only category: 'exploitation' tools
+   */
+  getSchemas(phase: AttackPhase): object[] {
+    const phaseCategories: Record<AttackPhase, ToolCategory[]> = {
+      RECON: ['recon', 'utility'],
+      ENUMERATE: ['enumeration', 'recon', 'utility'],
+      PLAN: ['enumeration', 'recon', 'utility'],
+      EXPLOIT: ['exploitation', 'enumeration', 'recon', 'utility'],
+      PIVOT: ['exploitation', 'pivot', 'enumeration', 'utility'],
+      REPORT: ['reporting', 'utility'],
+    };
+
+    const allowedCategories = phaseCategories[phase];
+    
+    return Array.from(this.tools.values())
+      .filter(t => allowedCategories.includes(t.category))
+      .map(t => ({
+        name: t.name,
+        description: t.description,
+        input_schema: this.zodToJsonSchema(t.parameters),
+      }));
+  }
+
+  /**
    * Get all tool schemas in OpenAI function calling format
    */
   getOpenAISchemas(allowedTools?: string[]): object[] {

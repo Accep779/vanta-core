@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { VantaTool, EngagementContext, ToolResult, TargetAsset } from '../tools/tool-registry';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { ToolRunner } from '../tools/tool-runner';
 
 /**
  * Real NmapTool — executes nmap in isolated Docker container
@@ -40,51 +37,11 @@ export const NmapTool: VantaTool = {
     osDetection: z.boolean().default(false).describe('Enable OS detection (-O)'),
   }),
   execute: async (params: any, context: EngagementContext): Promise<ToolResult> => {
-    console.log('[NmapTool] Executing nmap scan against', params.target);
-
-    // Production: run inside isolated Docker container
-    // For testing: use mock data (Docker daemon unavailable in sandbox)
+    console.log('[NmapTool] Executing nmap scan against', params.target, params.ports || 'default ports');
     
-    const isProduction = process.env.VANTA_DOCKER_ENABLED === 'true';
-    
-    if (!isProduction) {
-      console.log('[NmapTool] Running in mock mode (Docker unavailable)');
-      return executeMock(params, context);
-    }
-
-    // Build nmap command
-    const flags: string[] = [];
-    if (params.scanType === 'SYN') flags.push('-sS');
-    else if (params.scanType === 'TCP') flags.push('-sT');
-    else if (params.scanType === 'UDP') flags.push('-sU');
-    flags.push(`-T${params.timing}`);
-    if (params.ports) flags.push(`-p ${params.ports}`);
-    if (params.versionDetection) flags.push('-sV');
-    if (params.osDetection) flags.push('-O');
-    flags.push('-oX -');
-
-    const nmapCmd = `nmap ${flags.join(' ')} ${params.target}`;
-
-    try {
-      const { stdout, stderr } = await execAsync(nmapCmd, {
-        timeout: 60000,
-        env: { ...process.env, PATH: '/usr/bin:/usr/local/bin' },
-      });
-
-      const parsed = parseNmapXml(stdout);
-      const discoveredAssets: TargetAsset[] = parsed.openPorts.map((p) => ({
-        id: `asset-${params.target}-${p.port}`,
-        type: p.port === 443 ? 'url' : 'ip',
-        value: p.port === 443 ? `https://${params.target}` : `${params.target}:${p.port}`,
-        discoveredAt: Date.now(),
-        confirmed: true,
-      }));
-
-      return { success: true, output: parsed, discoveredAssets };
-    } catch (error: any) {
-      console.error('[NmapTool] Scan failed:', error.message);
-      return { success: false, error: error.message };
-    }
+    // Use ToolRunner to execute in Docker container
+    const runner = new ToolRunner();
+    return await runner.runNmap(params.target, params.ports);
   },
 };
 

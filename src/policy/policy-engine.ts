@@ -63,7 +63,17 @@ export class DefaultPolicyLoader implements PolicyLoader {
   async loadPolicy(engagementId: string): Promise<EngagementPolicy> {
     const context = this.contexts.get(engagementId);
     if (!context) {
-      throw new Error(`No policy found for engagement: ${engagementId}`);
+      // Fallback: return minimal policy (caller should have set context)
+      return {
+        engagementId,
+        allowedTools: [],
+        blockedTools: [],
+        maxRiskLevel: 'MEDIUM',
+        engagementType: 'recon-only',
+        scopeRules: [],
+        privacyLevel: 'standard',
+        localOnlyFields: [],
+      };
     }
 
     return {

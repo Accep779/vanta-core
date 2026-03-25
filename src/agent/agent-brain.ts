@@ -2,6 +2,7 @@ import { ToolRegistry, EngagementContext, ToolResult } from '../tools/tool-regis
 import { SessionLaneQueue } from '../queue/session-lane.queue';
 import { AuditService, AuditLogInput } from '../audit/audit.service';
 import { PolicyEngine, PolicyDecision } from '../policy/policy-engine';
+import { ScopeValidator, ScopeConfig } from '../engagement/scope-validator';
 
 // ─── Constant tokens ────────────────────────────────────────────────────────
 export const HEARTBEAT_OK = 'HEARTBEAT_OK';
@@ -38,8 +39,22 @@ interface ReActState {
 export interface BrainConfig {
   maxIterations?: number;
   model?: string;
+  modelProvider?: 'ollama' | 'cloud' | 'local';
   temperature?: number;
   stopOnGate?: boolean;
+}
+
+export interface GateState {
+  gateId: string;
+  toolName: string;
+  reason: string;
+  riskLevel: string;
+  pausedAt: number;
+  stateSnapshot: ReActState;
+  approvedBy?: string;
+  approvedAt?: number;
+  deniedBy?: string;
+  deniedAt?: number;
 }
 
 export interface BrainResponse {
@@ -63,6 +78,7 @@ export interface CompletionOptions {
 export interface CompletionResponse {
   content: string | null;
   toolCalls?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+  stopReason?: string | null;
 }
 
 // ─── AgentBrain class ─────────────────────────────────────────────────────────
@@ -77,6 +93,7 @@ export interface CompletionResponse {
  */
 export class AgentBrain {
   private policyEngine: PolicyEngine;
+  private scopeValidator: ScopeValidator;
 
   constructor(
     private toolRegistry: ToolRegistry,
@@ -86,6 +103,20 @@ export class AgentBrain {
     policyLoader?: any
   ) {
     this.policyEngine = new PolicyEngine(auditService, policyLoader);
+    
+    // ScopeValidator initialized per-engagement (set in executeReActLoop)
+    this.scopeValidator = new ScopeValidator(
+      {
+        engagementId: 'temp',
+        allowedIpRanges: [],
+        allowedDomains: [],
+        allowedUrls: [],
+        blockedTools: [],
+        maxRiskLevel: 'MEDIUM',
+        allowedPhases: ['RECON', 'ENUMERATE', 'PLAN', 'EXPLOIT', 'PIVOT', 'REPORT'],
+      },
+      auditService
+    );
 
     // Register handler to recreate tasks from payloads after server restart
     this.sessionLane.registerHandler(async (payload) => {
@@ -186,6 +217,18 @@ export class AgentBrain {
     maxIterations: number,
     config?: BrainConfig
   ): Promise<BrainResponse> {
+    // 0. Initialize ScopeValidator with engagement scope
+    const scopeConfig: ScopeConfig = {
+      engagementId,
+      allowedIpRanges: context.scope.inScopeTargets.filter(t => this.isIPAddr(t)),
+      allowedDomains: context.scope.inScopeTargets.filter(t => this.isDomainName(t)),
+      allowedUrls: [],
+      blockedTools: context.scope.blockedTools,
+      maxRiskLevel: context.scope.maxRiskLevel,
+      allowedPhases: [context.currentPhase], // Only current phase allowed
+    };
+    this.scopeValidator = new ScopeValidator(scopeConfig, this.auditService);
+
     // 1. Build system prompt for attack phase
     const systemPrompt = this.buildAttackSystemPrompt(context);
 
@@ -227,12 +270,16 @@ export class AgentBrain {
         input: { iteration: state.iteration }
       });
 
-      // LLM completion
+      // Get phase-filtered tool schemas (SECURITY: only show tools for current phase)
+      const phaseToolSchemas = this.toolRegistry.getSchemas(state.currentPhase);
+      console.log('[AgentBrain] Phase-filtered tools:', phaseToolSchemas.length, 'tools for', state.currentPhase);
+
+      // LLM completion (Ollama cloud model)
       const response = await this.llmComplete({
-        model: config?.model ?? 'claude-sonnet-4-20250514',
+        model: config?.model ?? 'minimax-m2.7:cloud',
         messages: state.messages,
         temperature: config?.temperature ?? 0,
-        tools: this.toolRegistry.getAnthropicSchemas() as any,
+        tools: phaseToolSchemas as any,
       });
 
       // Use toolCalls directly from adapter response (not parsed from content)
@@ -257,7 +304,34 @@ export class AgentBrain {
           console.log('[AgentBrain] Tool call:', toolName, JSON.stringify(toolParams));
           console.log('[AgentBrain] Call ID:', callId);
 
-          // Policy check — MUST happen BEFORE tool execution
+          // 1. Scope Validation — MUST happen BEFORE PolicyEngine
+          // SECURITY: Hard block if target is out of scope
+          const scopeResult = this.scopeValidator.validateTarget(
+            context.targetAsset || { id: 'primary', type: 'domain', value: 'unknown', discoveredAt: Date.now() },
+            state.currentPhase
+          );
+          
+          if (!scopeResult.allowed) {
+            console.log('[AgentBrain] Tool BLOCKED by ScopeValidator:', scopeResult.reason);
+            
+            // Log scope violation
+            await this.scopeValidator.logViolation(
+              engagementId,
+              context.targetAsset?.value || 'unknown',
+              toolName,
+              state.currentPhase,
+              scopeResult
+            );
+            
+            state.messages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: false, error: `Scope violation: ${scopeResult.reason}` }),
+              tool_call_id: callId
+            });
+            continue;
+          }
+
+          // 2. Policy check — happens AFTER scope validation
           const riskLevel = this.toolRegistry.getRiskLevel(toolName);
           console.log('[AgentBrain] Tool risk level:', riskLevel);
           const decision = await this.policyEngine.evaluate(context, toolName, riskLevel);
@@ -276,11 +350,30 @@ export class AgentBrain {
           if (decision.action === 'gate') {
             console.log('[AgentBrain] Tool GATED');
             // PAUSE the loop and request human approval
+            const gateId = `gate_${Date.now()}`;
+            
+            // Save state for resume
+            this.saveGateState(gateId, toolName, decision.reason, riskLevel, state);
+            
+            // Audit: gate_triggered
+            await this.auditService.log({
+              engagementId,
+              agentId: 'vanta-core',
+              sessionId: `${engagementId}:${context.targetAsset?.id || 'primary'}`,
+              eventType: 'gate_triggered',
+              actor: 'agent',
+              action: 'gate_created',
+              outcome: 'paused',
+              input: { gateId, toolName, reason: decision.reason, riskLevel },
+              phase: state.currentPhase,
+              riskLevel: riskLevel as any
+            });
+            
             return {
               response: `Approval required: ${decision.reason}`,
               toolsUsed,
               status: 'paused',
-              gateId: `gate_${Date.now()}`,
+              gateId,
               gateReason: decision.reason,
             };
           }
@@ -459,5 +552,115 @@ Always:
     }
 
     return null;
+  }
+
+  /**
+   * Active gates (paused engagements awaiting approval)
+   */
+  private activeGates: Map<string, GateState> = new Map();
+
+  /**
+   * Resume a gated engagement after human approval
+   */
+  async resumeGate(
+    gateId: string,
+    approvedBy: string,
+    note?: string,
+    approved: boolean = true
+  ): Promise<BrainResponse> {
+    const gateState = this.activeGates.get(gateId);
+    
+    if (!gateState) {
+      throw new Error(`Gate not found: ${gateId}`);
+    }
+
+    // Audit: gate_approved or gate_denied
+    await this.auditService.log({
+      engagementId: gateState.stateSnapshot.engagementId,
+      agentId: 'vanta-core',
+      sessionId: `${gateState.stateSnapshot.engagementId}:primary`,
+      eventType: approved ? 'gate_triggered' : 'gate_triggered',
+      actor: `approver:${approvedBy}`,
+      action: approved ? 'gate_approved' : 'gate_denied',
+      outcome: approved ? 'success' : 'denied',
+      input: { gateId, note: note || '', toolName: gateState.toolName, reason: gateState.reason },
+      phase: gateState.stateSnapshot.currentPhase,
+      riskLevel: gateState.riskLevel as any
+    });
+
+    if (!approved) {
+      // Gate denied — terminate phase, move to REPORT with partial findings
+      this.activeGates.delete(gateId);
+      
+      return {
+        response: `Gate denied by ${approvedBy}: ${note || gateState.reason}`,
+        toolsUsed: [],
+        status: 'paused',
+        gateId,
+        gateReason: 'denied',
+      };
+    }
+
+    // Gate approved — restore state and continue ReAct loop
+    this.activeGates.delete(gateId);
+
+    // Resume from paused state - reconstruct minimal context
+    const resumedResult = await this.executeReActLoop(
+      `[GATE APPROVED] ${note || 'Tool execution approved'}. Continue from where you paused.`,
+      {
+        engagementId: gateState.stateSnapshot.engagementId,
+        currentPhase: gateState.stateSnapshot.currentPhase,
+        scope: {
+          inScopeTargets: [],
+          outOfScopeTargets: [],
+          allowedTools: [],
+          blockedTools: [],
+          maxRiskLevel: 'MEDIUM' as const,
+        },
+        rulesOfEngagement: [],
+      },
+      gateState.stateSnapshot.engagementId,
+      gateState.stateSnapshot.maxIterations,
+      {}
+    );
+
+    return resumedResult;
+  }
+
+  /**
+   * Save gate state for later resume
+   */
+  private saveGateState(
+    gateId: string,
+    toolName: string,
+    reason: string,
+    riskLevel: string,
+    state: ReActState
+  ): void {
+    this.activeGates.set(gateId, {
+      gateId,
+      toolName,
+      reason,
+      riskLevel,
+      pausedAt: Date.now(),
+      stateSnapshot: { ...state }, // Deep copy
+    });
+  }
+
+  /**
+   * Check if string is an IP address (IPv4 or IPv6)
+   */
+  private isIPAddr(value: string): boolean {
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Pattern = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+    return ipv4Pattern.test(value) || ipv6Pattern.test(value);
+  }
+
+  /**
+   * Check if string is a domain name
+   */
+  private isDomainName(value: string): boolean {
+    const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/;
+    return domainPattern.test(value);
   }
 }

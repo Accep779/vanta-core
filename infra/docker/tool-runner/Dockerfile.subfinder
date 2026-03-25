@@ -1,0 +1,29 @@
+FROM golang:1.24-alpine AS builder
+
+LABEL description="Subfinder subdomain enumeration tool"
+
+# Install subfinder
+RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add \
+    ca-certificates \
+    bind-tools \
+    && rm -rf /var/cache/apk/*
+
+# Create workspace
+WORKDIR /workspace
+
+# Copy subfinder binary from builder
+COPY --from=builder /go/bin/subfinder /usr/local/bin/subfinder
+
+# Create non-root user
+RUN adduser -D -u 1000 scanner && \
+    chown -R scanner:scanner /workspace
+
+USER scanner
+
+ENTRYPOINT ["subfinder"]
+CMD ["--help"]

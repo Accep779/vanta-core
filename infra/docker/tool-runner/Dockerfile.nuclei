@@ -1,0 +1,30 @@
+FROM golang:1.24-alpine AS builder
+
+LABEL description="Nuclei vulnerability scanner"
+
+# Install nuclei (specific version compatible with Go 1.24)
+RUN go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.4.1
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add \
+    ca-certificates \
+    bind-tools \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Create workspace
+WORKDIR /workspace
+
+# Copy nuclei binary from builder
+COPY --from=builder /go/bin/nuclei /usr/local/bin/nuclei
+
+# Create non-root user
+RUN adduser -D -u 1000 scanner && \
+    chown -R scanner:scanner /workspace
+
+USER scanner
+
+ENTRYPOINT ["nuclei"]
+CMD ["--help"]

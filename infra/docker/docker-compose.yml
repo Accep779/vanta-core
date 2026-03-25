@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Nmap scanner container
+  nmap-runner:
+    build:
+      context: ./tool-runner
+      dockerfile: Dockerfile
+    image: vanta-core/nmap-runner:latest
+    container_name: nmap-scanner
+    network_mode: host
+    volumes:
+      - /tmp/vanta-scans:/workspace/scans
+    environment:
+      - SCAN_TARGET=${SCAN_TARGET:-example.com}
+      - SCAN_PORTS=${SCAN_PORTS:-22,80,443}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: scanner
+    entrypoint: ["nmap"]
+    command: ["-sV", "-sC", "-oA", "/workspace/scans/scan"]
+    restart: "no"
+    privileged: true
+
+  # Subdomain enumeration container
+  subfinder-runner:
+    build:
+      context: ./tool-runner
+      dockerfile: Dockerfile.subfinder
+    image: vanta-core/subfinder-runner:latest
+    container_name: subfinder-scanner
+    network_mode: bridge
+    volumes:
+      - /tmp/vanta-scans:/workspace/scans
+    environment:
+      - TARGET_DOMAIN=${SCAN_TARGET:-example.com}
+    user: scanner
+    entrypoint: ["subfinder"]
+    command: ["-d", "${SCAN_TARGET:-example.com}", "-o", "/workspace/scans/subdomains.txt"]
+    restart: "no"
+
+  # HTTPX probe container
+  httpx-runner:
+    build:
+      context: ./tool-runner
+      dockerfile: Dockerfile.httpx
+    image: vanta-core/httpx-runner:latest
+    container_name: httpx-scanner
+    network_mode: bridge
+    volumes:
+      - /tmp/vanta-scans:/workspace/scans
+    environment:
+      - TARGET_FILE=/workspace/scans/subdomains.txt
+    user: scanner
+    entrypoint: ["httpx"]
+    command: ["-l", "/workspace/scans/subdomains.txt", "-o", "/workspace/scans/probed.txt"]
+    restart: "no"
+
+  # Nuclei vulnerability scanner
+  nuclei-runner:
+    build:
+      context: ./tool-runner
+      dockerfile: Dockerfile.nuclei
+    image: vanta-core/nuclei-runner:latest
+    container_name: nuclei-scanner
+    network_mode: bridge
+    volumes:
+      - /tmp/vanta-scans:/workspace/scans
+      - /tmp/vanta-nuclei:/root/nuclei
+    environment:
+      - TARGETS=/workspace/scans/probed.txt
+      - RATE_LIMIT=10
+    user: scanner
+    entrypoint: ["nuclei"]
+    command: ["-l", "/workspace/scans/probed.txt", "-o", "/workspace/scans/vulns.txt", "-rate", "10"]
+    restart: "no"
+
+# Shared network for tool coordination
+networks:
+  default:
+    name: vanta-tool-network
+    driver: bridge
