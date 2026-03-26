@@ -4,7 +4,9 @@
  * Autonomous threat intelligence platform orchestrator.
  * Manages engagement lifecycle: RECON → ENUM → SCAN → EXPLOIT → REPORT
  * 
- * @version 1.1.0
+ * GAN-inspired harness: Generator-Evaluator loop with PhaseContracts
+ * 
+ * @version 2.0.0
  * @author Nodevs (AI Autonomous Agent)
  */
 
@@ -15,6 +17,8 @@ import { AuditService } from './audit/audit.service';
 import { ScopeValidator } from './engagement/scope-validator';
 import { PolicyEngine, RiskLevel } from './policy/policy-engine';
 import { ClaudeCodeTool } from './tools/claude-code.tool';
+import { ReconPlanner, ReconPlan, PhasePlan } from './planner/recon-planner';
+import { QualityEvaluator, PhaseContract, EvaluationResult } from './evaluator/quality-evaluator';
 
 export enum EngagementPhase {
   RECON = 'RECON',
@@ -67,10 +71,13 @@ export class VantaOrchestrator {
   private scopeValidator: ScopeValidator;
   private policyEngine: PolicyEngine;
   private claudeCode: ClaudeCodeTool;
+  private reconPlanner: ReconPlanner;
+  private qualityEvaluator: QualityEvaluator;
   
   private engagementId: string;
   private currentPhase: EngagementPhase;
   private findings: Finding[] = [];
+  private activeContracts: Map<string, PhaseContract> = new Map();
 
   constructor() {
     this.agentBrain = new AgentBrain();
@@ -80,6 +87,8 @@ export class VantaOrchestrator {
     this.scopeValidator = new ScopeValidator();
     this.policyEngine = new PolicyEngine();
     this.claudeCode = new ClaudeCodeTool();
+    this.reconPlanner = new ReconPlanner();
+    this.qualityEvaluator = new QualityEvaluator();
     
     this.engagementId = `engagement-${Date.now()}`;
     this.currentPhase = EngagementPhase.RECON;
@@ -162,13 +171,16 @@ export class VantaOrchestrator {
   }
 
   /**
-   * Execute a single phase
+   * Execute a single phase with Generator-Evaluator loop
+   * 
+   * GAN-inspired pattern: Generator proposes, Evaluator grades, iterate until pass
    */
   private async executePhase(
     phase: EngagementPhase,
     config: EngagementConfig
   ): Promise<PhaseResult> {
     const phaseStart = Date.now();
+    const maxIterations = config.maxIterationsPerPhase || 3;
     
     try {
       // Validate scope for this phase
@@ -186,41 +198,89 @@ export class VantaOrchestrator {
         };
       }
 
-      let output: any;
+      // Step 1: Generate phase plan via ReconPlanner (if first phase)
+      let plan: ReconPlan | null = null;
+      if (phase === EngagementPhase.RECON) {
+        plan = await this.reconPlanner.plan(config.target);
+      }
 
-      switch (phase) {
-        case EngagementPhase.RECON:
-          output = await this.runRecon(config.target);
+      // Step 2: Negotiate phase contract between Generator and Evaluator
+      const generatorProposal = await this.generatePhaseProposal(phase, plan);
+      const contract = await this.qualityEvaluator.negotiateContract(
+        phase,
+        generatorProposal
+      );
+      
+      this.activeContracts.set(phase, contract);
+
+      // Step 3: Generator-Evaluator loop
+      let iteration = 0;
+      let output: any = null;
+      let evaluation: EvaluationResult | null = null;
+
+      while (iteration < maxIterations) {
+        iteration++;
+        
+        // Generator executes
+        output = await this.executePhaseLogic(phase, config.target, contract);
+        
+        // Evaluator grades output
+        evaluation = await this.qualityEvaluator.evaluate(phase, output, contract);
+        
+        // Log evaluation
+        await this.auditService.log({
+          engagementId: this.engagementId,
+          eventType: 'phase_evaluated',
+          actor: 'vanta-orchestrator',
+          action: 'evaluation',
+          metadata: {
+            phase,
+            iteration,
+            score: evaluation.overallScore,
+            passed: evaluation.passed,
+            recommendedAction: evaluation.recommendedAction,
+          },
+        });
+
+        // Check if passed
+        if (evaluation.passed || evaluation.recommendedAction === 'PROCEED') {
           break;
-        case EngagementPhase.ENUMERATE:
-          output = await this.runEnumeration(config.target);
+        }
+        
+        // Handle recommended action
+        if (evaluation.recommendedAction === 'ESCALATE') {
+          return {
+            phase,
+            status: 'failed',
+            output: { evaluation, iterations: iteration },
+            duration: Date.now() - phaseStart,
+          };
+        }
+        
+        // REFINE or RETRY: Continue loop with feedback
+        if (iteration >= maxIterations) {
+          // Max iterations reached, return best effort
           break;
-        case EngagementPhase.SCAN:
-          output = await this.runScan(config.target);
-          break;
-        case EngagementPhase.EXPLOIT:
-          if (config.humanGateOnExploit) {
-            const gateApproved = await this.requestHumanGate(config);
-            if (!gateApproved) {
-              return {
-                phase,
-                status: 'gated',
-                output: null,
-                duration: Date.now() - phaseStart,
-              };
-            }
-          }
-          output = await this.runExploit(config.target);
-          break;
-        case EngagementPhase.REPORT:
-          output = await this.generateReport(config, []);
-          break;
+        }
+      }
+
+      // Handle EXPLOIT phase human gate
+      if (phase === EngagementPhase.EXPLOIT && config.humanGateOnExploit) {
+        const gateApproved = await this.requestHumanGate(config);
+        if (!gateApproved) {
+          return {
+            phase,
+            status: 'gated',
+            output: null,
+            duration: Date.now() - phaseStart,
+          };
+        }
       }
 
       return {
         phase,
         status: 'completed',
-        output,
+        output: { ...output, evaluation, iterations: iteration },
         duration: Date.now() - phaseStart,
       };
     } catch (error: any) {
@@ -241,6 +301,48 @@ export class VantaOrchestrator {
         output: null,
         duration: Date.now() - phaseStart,
       };
+    }
+  }
+
+  /**
+   * Generate phase proposal for contract negotiation
+   */
+  private async generatePhaseProposal(
+    phase: EngagementPhase,
+    plan: ReconPlan | null
+  ): Promise<string> {
+    const proposalMap: Record<EngagementPhase, string> = {
+      [EngagementPhase.RECON]: `Passive recon: subdomain enumeration via subfinder, HTTP probing via httpx. Expected: >=5 subdomains, >=3 live hosts.`,
+      [EngagementPhase.ENUMERATE]: `Deep enumeration: endpoint discovery, tech stack fingerprinting. Expected: >=10 endpoints, service identification.`,
+      [EngagementPhase.SCAN]: `Active scanning: port scan (nmap), vulnerability scan (nuclei). Expected: all open ports, CVE identification.`,
+      [EngagementPhase.EXPLOIT]: `Exploit PoC generation for critical/high findings using Claude Code. Expected: working PoCs for top vulnerabilities.`,
+      [EngagementPhase.REPORT]: `Final report generation with findings, evidence, remediation. Expected: comprehensive PDF/Markdown report.`,
+    };
+
+    return proposalMap[phase];
+  }
+
+  /**
+   * Execute phase logic (Generator)
+   */
+  private async executePhaseLogic(
+    phase: EngagementPhase,
+    target: string,
+    contract: PhaseContract
+  ): Promise<any> {
+    switch (phase) {
+      case EngagementPhase.RECON:
+        return await this.runRecon(target);
+      case EngagementPhase.ENUMERATE:
+        return await this.runEnumeration(target);
+      case EngagementPhase.SCAN:
+        return await this.runScan(target);
+      case EngagementPhase.EXPLOIT:
+        return await this.runExploit(target);
+      case EngagementPhase.REPORT:
+        return await this.generateReport({ target, scope: [], phases: [], maxIterationsPerPhase: 1, humanGateOnExploit: false, opsecMode: false }, []);
+      default:
+        throw new Error(`Unknown phase: ${phase}`);
     }
   }
 
