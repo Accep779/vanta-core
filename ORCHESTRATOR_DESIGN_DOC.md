@@ -1,8 +1,8 @@
 # VANTA Core — Orchestrator Design Document
 
-**Version:** 1.0
-**Date:** March 26, 2026
-**Status:** 🟡 Ready for Redesign
+**Version:** 1.0  
+**Date:** March 26, 2026  
+**Status:** 🟡 Ready for Redesign  
 **Audience:** UI/UX Designer, Product Designer
 
 ---
@@ -281,7 +281,7 @@ interface Finding {
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   cvss_score?: number;
   phase: string;
-  evidence: JSON; // screenshots, logs
+  evidence: JSON;
   remediation: string;
   status: 'open' | 'mitigated' | 'false-positive';
   created_at: DateTime;
@@ -296,12 +296,11 @@ interface PhaseContract {
     min_subdomains?: number;
     confidence_threshold?: number;
     min_ports?: number;
-    // ... dynamic based on phase
   };
   negotiated_at: DateTime;
   completed: boolean;
   graded_at?: DateTime;
-  grade_score?: number; // 0-100
+  grade_score?: number;
 }
 
 // Audit Log Entry
@@ -335,17 +334,6 @@ interface AuditLogEntry {
 | **Approval Workflow** | API call | Modal with context, approve/deny buttons |
 | **Multi-Engagement View** | None | Kanban board or list view |
 
-### 6.2 User Feedback (Anticipated)
-
-> "I need to see what's happening _right now_ — not refresh the API every 30 seconds."
-> — Security Manager
-
-> "Where's the report? My client needs something I can send them."
-> — MSSP Owner
-
-> "I want to approve/deny高风险 actions without touching the CLI."
-> — CISO
-
 ---
 
 ## 7. Design Requirements
@@ -367,38 +355,14 @@ interface AuditLogEntry {
 
 | Principle | Description |
 |-----------|-------------|
-| **Security First** | Never expose sensitive data (API keys, credentials) in UI |
-| **Real-Time** | WebSocket/SSE for live updates — no manual refresh |
+| **Security First** | Never expose sensitive data in UI |
+| **Real-Time** | WebSocket/SSE for live updates |
 | **Actionable** | Every screen should have clear next actions |
 | **Audit-Ready** | All actions logged, visible in UI |
-| **Enterprise** | Professional, clean, SOC2/ISO27001 compliant aesthetic |
+| **Enterprise** | Professional, clean, SOC2/ISO27001 aesthetic |
 | **Dark Mode** | Security teams prefer dark mode (default) |
 
-### 7.3 Technical Constraints
-
-| Constraint | Impact |
-|------------|--------|
-| **Backend:** Node.js + TypeScript | API is REST (no GraphQL yet) |
-| **Database:** Neon PostgreSQL | Real-time via polling or Supabase Realtime alternative |
-| **Auth:** None currently | Need to add JWT/OAuth for multi-user |
-| **Hosting:** VPS (Contabo) | No serverless — design for always-on |
-| **API Port:** 39995 | Fixed port, may need reverse proxy for production |
-
----
-
-## 8. Competitive Reference
-
-### 8.1 Tools to Reference
-
-| Tool | What to借鉴 | URL |
-|------|------------|-----|
-| **Burp Suite** | Findings view, severity coloring | portswigger.net |
-| **Nessus** | Report design, executive summaries | tenable.com |
-| **Cobalt.io** | Modern pentest platform UX | cobalt.io |
-| **Synack** | Crowdsourced pentest dashboard | synack.com |
-| **Vanta (compliance)** | Compliance dashboard, audit trail | vanta.com |
-
-### 8.2 Color Palette (Suggested)
+### 7.3 Color Palette (Suggested)
 
 ```
 Primary:     #10B981 (Emerald Green) — Success, safe actions
@@ -413,39 +377,28 @@ Muted:       #94A3B8 (Slate 400) — Secondary text
 
 ---
 
+## 8. Competitive Reference
+
+| Tool | What to借鉴 | URL |
+|------|------------|-----|
+| **Burp Suite** | Findings view, severity coloring | portswigger.net |
+| **Nessus** | Report design, executive summaries | tenable.com |
+| **Cobalt.io** | Modern pentest platform UX | cobalt.io |
+| **Synack** | Crowdsourced pentest dashboard | synack.com |
+| **Vanta (compliance)** | Compliance dashboard, audit trail | vanta.com |
+
+---
+
 ## 9. Redesign Questions for Designer
 
 ### 9.1 Key Decisions
 
-1. **Dashboard Layout:**
-   - Single-page app with tabs?
-   - Multi-page with sidebar navigation?
-   - Kanban board for engagements?
-
-2. **Real-Time Updates:**
-   - WebSocket connection?
-   - Server-Sent Events (SSE)?
-   - Polling every 5-10 seconds?
-
-3. **Engagement Creation:**
-   - Multi-step wizard?
-   - Single-page form with sections?
-   - Template-based (select from pre-defined scopes)?
-
-4. **Findings View:**
-   - Table with filters?
-   - Card-based layout?
-   - Hybrid (table + detail panel)?
-
-5. **Report Generation:**
-   - In-app PDF builder?
-   - HTML report with print-to-PDF?
-   - Export to Word/Google Docs?
-
-6. **Approval Workflow:**
-   - Modal popup?
-   - Dedicated approval queue page?
-   - Inline approve/deny buttons?
+1. **Dashboard Layout:** Single-page app with tabs? Multi-page with sidebar? Kanban board?
+2. **Real-Time Updates:** WebSocket? SSE? Polling every 5-10 seconds?
+3. **Engagement Creation:** Multi-step wizard? Single-page form? Template-based?
+4. **Findings View:** Table with filters? Card-based? Hybrid?
+5. **Report Generation:** In-app PDF builder? HTML with print-to-PDF? Export to Word?
+6. **Approval Workflow:** Modal popup? Dedicated approval queue page? Inline buttons?
 
 ### 9.2 Designer Deliverables
 
@@ -477,7 +430,7 @@ Muted:       #94A3B8 (Slate 400) — Secondary text
 ### Phase 3: Advanced Features (4 weeks)
 - [ ] Multi-engagement kanban
 - [ ] Custom report builder
-- [ ] Team collaboration (comments, assignments)
+- [ ] Team collaboration
 - [ ] API key management
 - [ ] User auth (JWT)
 
@@ -548,6 +501,6 @@ vanta-core/
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** March 26, 2026
+**Document Version:** 1.0  
+**Last Updated:** March 26, 2026  
 **Status:** 🟡 Ready for Designer Review
