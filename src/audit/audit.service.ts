@@ -59,7 +59,8 @@ export type AttackPhase =
 export class AuditService {
   private storage: Map<string, AuditLogEntry[]> = new Map();
 
-  constructor() {
+  constructor(storage: Map<string, AuditLogEntry[]> = new Map()) {
+    this.storage = storage;
     // In production, replace with database/Prisma client
     // For v1: in-memory storage (replace before production)
   }

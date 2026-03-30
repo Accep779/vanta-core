@@ -91,7 +91,7 @@ export class VantaOrchestrator {
     this.policyEngine = new PolicyEngine();
     this.claudeCode = new ClaudeCodeTool();
     this.reconPlanner = new ReconPlanner();
-    this.qualityEvaluator = new QualityEvaluator();
+    this.qualityEvaluator = new QualityEvaluator(null as any);
     
     this.engagementId = `engagement-${Date.now()}`;
     this.currentPhase = EngagementPhase.RECON;

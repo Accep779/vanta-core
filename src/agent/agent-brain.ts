@@ -96,16 +96,16 @@ export class AgentBrain {
   private scopeValidator: ScopeValidator;
 
   constructor(
-    private toolRegistry: ToolRegistry,
-    private auditService: AuditService,
-    private sessionLane: SessionLaneQueue,
-    private llmComplete: (options: CompletionOptions) => Promise<CompletionResponse>,
-    policyLoader?: any
+    toolRegistry: ToolRegistry = null as any,
+    auditService: AuditService = null as any,
+    sessionLane: SessionLaneQueue = null as any,
+    llmComplete: (options: CompletionOptions) => Promise<CompletionResponse> = null as any,
+    policyLoader: any = null
   ) {
-    this.policyEngine = new PolicyEngine(auditService, policyLoader);
+    this.policyEngine = auditService ? new PolicyEngine(auditService, policyLoader) : null as any;
     
     // ScopeValidator initialized per-engagement (set in executeReActLoop)
-    this.scopeValidator = new ScopeValidator(
+    this.scopeValidator = auditService ? new ScopeValidator(
       {
         engagementId: 'temp',
         allowedIpRanges: [],
@@ -116,7 +116,7 @@ export class AgentBrain {
         allowedPhases: ['RECON', 'ENUMERATE', 'PLAN', 'EXPLOIT', 'PIVOT', 'REPORT'],
       },
       auditService
-    );
+    ) : null as any;
 
     // Register handler to recreate tasks from payloads after server restart
     this.sessionLane.registerHandler(async (payload) => {

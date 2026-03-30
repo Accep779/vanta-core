@@ -39,8 +39,16 @@ export class ScopeValidator {
   private scopeConfig: ScopeConfig;
   private auditService: AuditService;
 
-  constructor(scopeConfig: ScopeConfig, auditService: AuditService) {
-    this.scopeConfig = scopeConfig;
+  constructor(scopeConfig: ScopeConfig = null as any, auditService: AuditService = null as any) {
+    this.scopeConfig = scopeConfig || {
+      engagementId: 'temp',
+      allowedIpRanges: [],
+      allowedDomains: [],
+      allowedUrls: [],
+      blockedTools: [],
+      maxRiskLevel: 'MEDIUM',
+      allowedPhases: ['RECON', 'ENUMERATE', 'PLAN', 'EXPLOIT', 'PIVOT', 'REPORT'],
+    };
     this.auditService = auditService;
   }
 

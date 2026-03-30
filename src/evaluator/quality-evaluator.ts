@@ -38,7 +38,7 @@ export interface ContractCriterion {
 }
 
 export class QualityEvaluator {
-  private gradingCriteria = {
+  private gradingCriteria: any = {
     // Adapted from Anthropic's frontend design criteria
     completeness: {
       description: 'Did we find all assets/endpoints or just surface-level?',

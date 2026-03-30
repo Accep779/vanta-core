@@ -81,6 +81,10 @@ export interface ToolResult {
 export class ToolRegistry {
   private tools = new Map<string, VantaTool>();
 
+  constructor(tools: VantaTool[] = []) {
+    tools.forEach(t => this.register(t));
+  }
+
   /**
    * Register a tool in the sandbox
    */

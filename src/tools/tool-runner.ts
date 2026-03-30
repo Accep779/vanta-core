@@ -25,7 +25,8 @@ export interface ToolRunConfig {
 export class ToolRunner {
   private scanOutputDir: string = '/tmp/vanta-scans';
 
-  constructor() {
+  constructor(scanOutputDir: string = '/tmp/vanta-scans') {
+    this.scanOutputDir = scanOutputDir;
     // Ensure output directory exists
     this.ensureOutputDir();
   }
