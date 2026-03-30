@@ -27,9 +27,9 @@ const pool = new Pool({ connectionString: neonConfig.connectionString });
 // INBOX ROTATION — 3 inboxes for 150 emails/day
 // ═══════════════════════════════════════════════════════════════
 const INBOXES = agentmailConfig.inboxes || [
-  'cleo-nodevs@agentmail.to',
-  'larry-nodevs@agentmail.to',
-  'quilly-nodevs@agentmail.to'
+  { name: 'cleo', email: 'cleo-nodevs@agentmail.to' },
+  { name: 'larry', email: 'zestyability426@agentmail.to' },
+  { name: 'quilly', email: 'calmlocation931@agentmail.to' }
 ];
 
 let currentInboxIndex = 0;
@@ -72,9 +72,12 @@ async function getLeadsNeedingOutreach() {
 /**
  * Send email via AgentMail API (with inbox rotation)
  */
-async function sendEmail(to, subject, body, inboxId) {
+async function sendEmail(to, subject, body, inbox) {
   try {
-    const apiUrl = `https://api.agentmail.to/v0/inboxes/${inboxId}/messages/send`;
+    // API expects full email address as inbox_id
+    const inboxEmail = typeof inbox === 'string' ? inbox : inbox.email;
+    const inboxName = typeof inbox === 'string' ? inbox : inbox.name;
+    const apiUrl = `https://api.agentmail.to/v0/inboxes/${inboxEmail}/messages/send`;
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -92,13 +95,13 @@ async function sendEmail(to, subject, body, inboxId) {
     const result = await response.json();
     
     if (response.ok) {
-      return { success: true, messageId: result.message_id, inbox: inboxId };
+      return { success: true, messageId: result.message_id, inbox: inboxName };
     } else {
-      return { success: false, error: result.message || result.error || `HTTP ${response.status}`, inbox: inboxId };
+      return { success: false, error: result.message || result.error || `HTTP ${response.status}`, inbox: inboxName };
     }
   } catch (error) {
     console.error(`    → Fetch error: ${error.message}`);
-    return { success: false, error: error.message, inbox: inboxId };
+    return { success: false, error: error.message, inbox: typeof inbox === 'string' ? inbox : inbox.name };
   }
 }
 
@@ -191,9 +194,10 @@ async function runCampaign(dailyLimit = 150) {
     const emailResult = await sendEmail(lead.email, personalized.subject, personalized.body, inbox);
     
     if (emailResult.success) {
-      await updateLeadStatus(lead.id, 'contacted', inbox);
+      await updateLeadStatus(lead.id, 'contacted', inboxEmail);
       
-      console.log(`   ✓ ${lead.industry?.padEnd(20) || 'unknown'} → ${lead.email} (${inbox})`);
+      const inboxName = typeof inbox === 'string' ? inbox : inbox.name;
+      console.log(`   ✓ ${lead.industry?.padEnd(20) || 'unknown'} → ${lead.email} (${inboxName})`);
       sent++;
     } else {
       console.log(`   ✗ Failed to ${lead.email}: ${emailResult.error}`);
@@ -222,14 +226,15 @@ async function runCampaign(dailyLimit = 150) {
     const template = getTemplateForIndustry(lead.industry, templateType);
     const personalized = personalizeTemplate(template, lead);
     const inbox = getNextInbox();
+    const inboxName = typeof inbox === 'string' ? inbox : inbox.name;
     
     const emailResult = await sendEmail(lead.email, personalized.subject, personalized.body, inbox);
     
     if (emailResult.success) {
       const newStatus = daysSince >= 14 ? 'exhausted' : 'contacted';
-      await updateLeadStatus(lead.id, newStatus, inbox);
+      await updateLeadStatus(lead.id, newStatus, inboxName);
       
-      console.log(`   ✓ ${templateType.padEnd(18)} → ${lead.email} (${inbox})`);
+      console.log(`   ✓ ${templateType.padEnd(18)} → ${lead.email} (${inboxName})`);
       sent++;
     } else {
       console.log(`   ✗ Failed follow-up to ${lead.email}: ${emailResult.error}`);
