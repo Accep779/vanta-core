@@ -72,6 +72,10 @@ export interface ToolResult {
   vulnerabilities?: Vulnerability[];
   gateTriggered?: boolean;
   gateReason?: string;
+  // Tool-specific properties
+  subdomains?: string[];
+  liveHosts?: string[];
+  ports?: any[];
 }
 
 export class ToolRegistry {

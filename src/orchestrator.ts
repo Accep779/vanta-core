@@ -106,9 +106,12 @@ export class VantaOrchestrator {
     // Log engagement start
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'engagement_started',
       actor: 'vanta-orchestrator',
       action: 'start',
+      outcome: 'engagement_started',
       metadata: {
         target: config.target,
         scope: config.scope,
@@ -129,9 +132,12 @@ export class VantaOrchestrator {
       if (phaseResult.status === 'failed' || phaseResult.status === 'gated') {
         await this.auditService.log({
           engagementId: this.engagementId,
+          agentId: 'vanta-orchestrator',
+          sessionId: this.engagementId,
           eventType: 'engagement_stopped',
           actor: 'vanta-orchestrator',
           action: 'phase_failure',
+          outcome: 'engagement_stopped',
           metadata: {
             stoppedAtPhase: phase,
             reason: phaseResult.status,
@@ -154,9 +160,12 @@ export class VantaOrchestrator {
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'engagement_completed',
       actor: 'vanta-orchestrator',
       action: 'complete',
+      outcome: 'engagement_complete',
       metadata: {
         duration,
         findingsCount: this.findings.length,
@@ -189,7 +198,7 @@ export class VantaOrchestrator {
       // Validate scope for this phase
       const scopeValid = await this.scopeValidator.validateTarget(
         config.target,
-        { allowedDomains: config.scope }
+        config.scope as any
       );
 
       if (!scopeValid.allowed) {
@@ -233,9 +242,12 @@ export class VantaOrchestrator {
         // Log evaluation
         await this.auditService.log({
           engagementId: this.engagementId,
+          agentId: 'vanta-orchestrator',
+          sessionId: this.engagementId,
           eventType: 'phase_evaluated',
           actor: 'vanta-orchestrator',
           action: 'evaluation',
+          outcome: evaluation.passed ? 'phase_passed' : 'phase_rejected',
           metadata: {
             phase,
             iteration,
@@ -289,9 +301,12 @@ export class VantaOrchestrator {
     } catch (error: any) {
       await this.auditService.log({
         engagementId: this.engagementId,
+        agentId: 'vanta-orchestrator',
+        sessionId: this.engagementId,
         eventType: 'phase_failed',
         actor: 'vanta-orchestrator',
         action: 'error',
+        outcome: 'phase_failed',
         metadata: {
           phase,
           error: error.message,
@@ -397,7 +412,7 @@ export class VantaOrchestrator {
       metadata: { target },
     });
 
-    const result = await this.toolRunner.runHttpx([target]);
+    const result = await this.toolRunner.runHttpx(target);
 
     await this.auditService.log({
       engagementId: this.engagementId,
@@ -432,7 +447,7 @@ export class VantaOrchestrator {
 
     const [nmapResult, nucleiResult] = await Promise.all([
       this.toolRunner.runNmap(target),
-      this.toolRunner.runNuclei([target]),
+      this.toolRunner.runNuclei(target),
     ]);
 
     // Process findings
