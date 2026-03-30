@@ -38,25 +38,29 @@ export interface ContractCriterion {
 }
 
 export class QualityEvaluator {
-  private gradingCriteria: any = {
-    // Adapted from Anthropic's frontend design criteria
-    completeness: {
-      description: 'Did we find all assets/endpoints or just surface-level?',
-      weight: 0.3,
-    },
-    accuracy: {
-      description: 'Are findings backed by evidence or just assertions?',
-      weight: 0.25,
-    },
-    coverage: {
-      description: 'Did we test all discovered assets or skip some?',
-      weight: 0.25,
-    },
-    evidenceQuality: {
-      description: 'Are findings backed by screenshots/logs?',
-      weight: 0.2,
-    },
-  };
+  private gradingCriteria: any;
+
+  constructor(gradingCriteria?: any) {
+    this.gradingCriteria = gradingCriteria || {
+      // Adapted from Anthropic's frontend design criteria
+      completeness: {
+        description: 'Did we find all assets/endpoints or just surface-level?',
+        weight: 0.3,
+      },
+      accuracy: {
+        description: 'Are findings backed by evidence or just assertions?',
+        weight: 0.25,
+      },
+      coverage: {
+        description: 'Did we test all discovered assets or skip some?',
+        weight: 0.25,
+      },
+      evidenceQuality: {
+        description: 'Are findings backed by screenshots/logs?',
+        weight: 0.2,
+      },
+    };
+  }
 
   async evaluate(
     phase: string,

@@ -14,7 +14,7 @@ async function testAllTools(): Promise<void> {
   const nmapResult = await runner.runNmap('example.com', '22,80');
   console.log('   Nmap:', nmapResult.success ? '✅ PASS' : '❌ FAIL');
   if (nmapResult.success) {
-    console.log('   Found:', nmapResult.discoveredAssets.length, 'assets');
+    console.log('   Found:', (nmapResult.discoveredAssets || []).length, 'assets');
   }
   
   // Test 2: Subfinder
@@ -22,7 +22,7 @@ async function testAllTools(): Promise<void> {
   const subfinderResult = await runner.runSubfinder('example.com');
   console.log('   Subfinder:', subfinderResult.success ? '✅ PASS' : '❌ FAIL');
   if (subfinderResult.success) {
-    console.log('   Found:', subfinderResult.discoveredAssets.length, 'subdomains');
+    console.log('   Found:', (subfinderResult.discoveredAssets || []).length, 'subdomains');
   }
   
   // Test 3: Httpx
@@ -34,7 +34,7 @@ async function testAllTools(): Promise<void> {
   const httpxResult = await runner.runHttpx(subdomainFile);
   console.log('   Httpx:', httpxResult.success ? '✅ PASS' : '❌ FAIL');
   if (httpxResult.success) {
-    console.log('   Probed:', httpxResult.discoveredAssets.length, 'URLs');
+    console.log('   Probed:', (httpxResult.discoveredAssets || []).length, 'URLs');
   }
   
   // Test 4: Nuclei

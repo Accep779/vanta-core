@@ -83,15 +83,20 @@ export class VantaOrchestrator {
   private activeContracts: Map<string, PhaseContract> = new Map();
 
   constructor() {
-    this.agentBrain = new AgentBrain();
+    this.auditService = new AuditService();
     this.toolRunner = new ToolRunner();
     this.toolRegistry = new ToolRegistry();
-    this.auditService = new AuditService();
     this.scopeValidator = new ScopeValidator();
-    this.policyEngine = new PolicyEngine();
+    this.policyEngine = new PolicyEngine(this.auditService);
+    this.agentBrain = new AgentBrain(
+      this.toolRegistry,
+      this.auditService,
+      null as any,
+      null as any
+    );
     this.claudeCode = new ClaudeCodeTool();
     this.reconPlanner = new ReconPlanner();
-    this.qualityEvaluator = new QualityEvaluator(null as any);
+    this.qualityEvaluator = new QualityEvaluator();
     
     this.engagementId = `engagement-${Date.now()}`;
     this.currentPhase = EngagementPhase.RECON;
