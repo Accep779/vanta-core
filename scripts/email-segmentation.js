@@ -51,6 +51,51 @@ const BOUNCED_DOMAINS = new Set([
   'dentl.com.au',
   'dmsplumbing.co.za',
   'capital-partners.com.au',
+  
+  // Known disposable/temporary email domains (high bounce)
+  'tempmail.com',
+  'guerrillamail.com',
+  '10minutemail.com',
+  'mailinator.com',
+  'throwaway.email',
+  'temp-mail.org',
+  'fakeinbox.com',
+  'trashmail.com',
+  'getnada.com',
+  'maildrop.cc',
+  'yopmail.com',
+  'sharklasers.com',
+  'guerrillamailblock.com',
+  'pokemail.net',
+  'spam4.me',
+  'tempinbox.com',
+  'disposablemail.com',
+  'burnermail.io',
+  'emailondeck.com',
+  
+  // Common bounce-prone domains (outdated/abandoned)
+  'aol.com',
+  'live.com',
+  'msn.com',
+  'comcast.net',
+  'verizon.net',
+  'att.net',
+  'sbcglobal.net',
+  'bellsouth.net',
+  'cox.net',
+  'optonline.net',
+  
+  // Role-based domains (not decision makers)
+  'genericmail.com',
+  'info-mail.com',
+  'contact-us.com',
+  
+  // Educational/Government (restricted)
+  'edu',
+  'ac.uk',
+  'gov',
+  'go.uk',
+  'mil',
 ]);
 
 // ============== SEGMENTATION ==============

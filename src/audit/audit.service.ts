@@ -23,18 +23,30 @@ export interface AuditLogInput {
   durationMs?: number;
   phase?: AttackPhase;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  metadata?: any;
 }
 
 export type AttackEventType = 
   | 'engagement_started'
+  | 'engagement_stopped'
+  | 'engagement_completed'
   | 'recon_started'
+  | 'recon_completed'
+  | 'enumeration_started'
   | 'enumeration_completed'
+  | 'phase_evaluated'
+  | 'phase_failed'
   | 'vuln_identified'
   | 'gate_triggered'
   | 'exploit_executed'
   | 'pivot_completed'
   | 'report_generated'
-  | 'engagement_completed';
+  | 'scan_started'
+  | 'scan_completed'
+  | 'exploit_started'
+  | 'exploit_completed'
+  | 'report_started'
+  | 'report_completed';
 
 export type AttackPhase = 
   | 'RECON'
@@ -57,7 +69,8 @@ export class AuditService {
     agentId: string; 
     sessionId: string; 
     eventType: AttackEventType; 
-    outcome: string 
+    outcome: string;
+    metadata?: any;
   }): Promise<void> {
     const key = `${event.engagementId}:${event.sessionId}`;
     
@@ -96,6 +109,7 @@ export class AuditService {
       durationMs: event.durationMs,
       phase: event.phase,
       riskLevel: event.riskLevel,
+      metadata: event.metadata,
       hash,
       createdAt: Date.now()
     };
@@ -166,6 +180,7 @@ export interface AuditLogEntry {
   durationMs?: number;
   phase?: AttackPhase;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  metadata?: any;
   hash: string;
   createdAt: number;
 }

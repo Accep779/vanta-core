@@ -154,7 +154,8 @@ Provide:
 
     // Write system prompt to temp file
     const systemPromptFile = `/tmp/claude-system-${Date.now()}.md`;
-    await execAsync(`echo ${this.escapeShell(systemPrompt)} > ${systemPromptFile}`);
+    const safePrompt = systemPrompt || this.config.systemPrompt || '';
+    await execAsync(`echo ${this.escapeShell(safePrompt)} > ${systemPromptFile}`);
 
     // Build Claude Code command
     const allowedTools = this.config.allowedTools?.join(',') || 'Bash(*)';

@@ -15,7 +15,7 @@ import { ToolRunner } from './tools/tool-runner';
 import { ToolRegistry } from './tools/tool-registry';
 import { AuditService } from './audit/audit.service';
 import { ScopeValidator } from './engagement/scope-validator';
-import { PolicyEngine, RiskLevel } from './policy/policy-engine';
+import { PolicyEngine } from './policy/policy-engine';
 import { ClaudeCodeTool } from './tools/claude-code.tool';
 import { ReconPlanner, ReconPlan, PhasePlan } from './planner/recon-planner';
 import { QualityEvaluator, PhaseContract, EvaluationResult } from './evaluator/quality-evaluator';
@@ -61,6 +61,9 @@ export interface Finding {
   remediation: string;
   cvss?: number;
   cve?: string;
+  name?: string;
+  template?: string;
+  ports?: any[];
 }
 
 export class VantaOrchestrator {
@@ -352,9 +355,12 @@ export class VantaOrchestrator {
   private async runRecon(target: string): Promise<any> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'recon_started',
       actor: 'vanta-orchestrator',
       action: 'subfinder',
+      outcome: 'recon_initiated',
       metadata: { target },
     });
 
@@ -362,9 +368,12 @@ export class VantaOrchestrator {
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'recon_completed',
       actor: 'vanta-orchestrator',
       action: 'subfinder_complete',
+      outcome: 'recon_complete',
       metadata: {
         subdomainsFound: result.subdomains?.length || 0,
       },
@@ -379,9 +388,12 @@ export class VantaOrchestrator {
   private async runEnumeration(target: string): Promise<any> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'enumeration_started',
       actor: 'vanta-orchestrator',
       action: 'httpx',
+      outcome: 'enum_initiated',
       metadata: { target },
     });
 
@@ -389,9 +401,12 @@ export class VantaOrchestrator {
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'enumeration_completed',
       actor: 'vanta-orchestrator',
       action: 'httpx_complete',
+      outcome: 'enum_complete',
       metadata: {
         liveHosts: result.liveHosts?.length || 0,
       },
@@ -406,9 +421,12 @@ export class VantaOrchestrator {
   private async runScan(target: string): Promise<any> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'scan_started',
       actor: 'vanta-orchestrator',
       action: 'nmap_nuclei',
+      outcome: 'scan_initiated',
       metadata: { target },
     });
 
@@ -423,21 +441,24 @@ export class VantaOrchestrator {
         this.findings.push({
           id: `vuln-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           severity: vuln.severity || 'MEDIUM',
-          title: vuln.name || 'Vulnerability Detected',
+          title: (vuln as any).name || 'Vulnerability Detected',
           description: vuln.description || 'No description available',
-          evidence: vuln.evidence || vuln.template || 'Unknown',
-          remediation: vuln.remediation || 'Apply vendor patches',
-          cvss: vuln.cvss,
-          cve: vuln.cve,
+          evidence: (vuln as any).evidence || (vuln as any).template || 'Unknown',
+          remediation: (vuln as any).remediation || 'Apply vendor patches',
+          cvss: (vuln as any).cvss,
+          cve: (vuln as any).cve,
         });
       }
     }
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'scan_completed',
       actor: 'vanta-orchestrator',
       action: 'nmap_nuclei_complete',
+      outcome: 'scan_complete',
       metadata: {
         openPorts: nmapResult.ports?.length || 0,
         vulnerabilities: nucleiResult.vulnerabilities?.length || 0,
@@ -453,9 +474,12 @@ export class VantaOrchestrator {
   private async runExploit(target: string): Promise<any> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'exploit_started',
       actor: 'vanta-orchestrator',
       action: 'claude_exploit_gen',
+      outcome: 'exploit_initiated',
       metadata: { target, findingsCount: this.findings.length },
     });
 
@@ -471,9 +495,12 @@ export class VantaOrchestrator {
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'exploit_completed',
       actor: 'vanta-orchestrator',
       action: 'claude_exploit_complete',
+      outcome: 'exploit_complete',
       metadata: {
         exploitsGenerated: exploitPocs.length,
       },
@@ -491,9 +518,12 @@ export class VantaOrchestrator {
   ): Promise<string> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'report_started',
       actor: 'vanta-orchestrator',
       action: 'claude_report_gen',
+      outcome: 'report_initiated',
       metadata: {
         target: config.target,
         findingsCount: this.findings.length,
@@ -510,9 +540,12 @@ export class VantaOrchestrator {
 
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'report_completed',
       actor: 'vanta-orchestrator',
       action: 'report_complete',
+      outcome: 'report_complete',
       metadata: {
         reportLength: report.length,
       },
@@ -527,9 +560,12 @@ export class VantaOrchestrator {
   private async requestHumanGate(config: EngagementConfig): Promise<boolean> {
     await this.auditService.log({
       engagementId: this.engagementId,
+      agentId: 'vanta-orchestrator',
+      sessionId: this.engagementId,
       eventType: 'gate_triggered',
       actor: 'vanta-orchestrator',
       action: 'human_approval_required',
+      outcome: 'gate_pending_approval',
       metadata: {
         phase: EngagementPhase.EXPLOIT,
         reason: 'High-risk exploitation requires human authorization',
